@@ -132,6 +132,62 @@ export const pullModel = async (
   }
 };
 
+export const generatePromptStream = async function* (
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  baseUrl: string = DEFAULT_OLLAMA_URL
+): AsyncGenerator<string, void, unknown> {
+  const response = await fetch(`${baseUrl}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      stream: true,
+      keep_alive: 0, 
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 500) {
+       throw new Error('Ollama Server Error (500). Ensure Ollama is running and the model is installed correctly.');
+    }
+    throw new Error(`Ollama API Error: ${response.status} ${response.statusText}`);
+  }
+
+  if (!response.body) throw new Error('ReadableStream not supported');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split('\n').filter((line) => line.trim() !== '');
+
+    for (const line of lines) {
+      try {
+        const json = JSON.parse(line);
+        if (json.error) {
+          throw new Error(json.error);
+        }
+        if (json.response) {
+          yield json.response;
+        }
+        if (json.done) {
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing JSON chunk', e);
+      }
+    }
+  }
+};
+
 export const generatePrompt = async (
   model: string,
   systemPrompt: string,
@@ -171,6 +227,42 @@ export const mockInstalledModels: OllamaModel[] = [
     details: { format: 'gguf', family: 'llama', families: ['llama'], parameter_size: '13B', quantization_level: 'Q4_0' }
   }
 ];
+
+export const mockGeneratePromptStream = async function* (
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): AsyncGenerator<string, void, unknown> {
+  // Simulate model loading delay
+  yield ""; // Initial yield to signal start
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  
+  const response = `## [DEMO MODE] Generated Prompt
+
+**Subject:** ${userPrompt}
+
+## Subject: Detailed Character
+- **Body Type:** Athletic, imposing
+- **Facial expressions:** Stoic, intense gaze
+
+## Action/Scene: Dynamic Composition
+- **Outfit:** Tactical gear, weathered texture
+- **Accessories:** Cybernetic implants, glowing accents
+
+## Background: Atmospheric Setting
+- **Description:** Dystopian city street, rain-slicked pavement
+- **Lighting:** Neon signs reflecting on wet surfaces, volumetric fog
+
+---
+
+${userPrompt}, tactical gear, cybernetic implants, dystopian city, neon lighting, volumetric fog, 8k, masterpiece, cinematic lighting, highly detailed`;
+
+  const chunks = response.split(' ');
+  for (const chunk of chunks) {
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate token generation
+    yield chunk + " ";
+  }
+};
 
 export const mockGeneratePrompt = async (
   model: string,
