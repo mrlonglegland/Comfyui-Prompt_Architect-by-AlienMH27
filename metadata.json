@@ -1,0 +1,5 @@
+{
+  "name": "ComfyUI Prompt Architect",
+  "description": "A local AI prompt engineering tool for ComfyUI using Ollama.",
+  "requestFramePermissions": []
+}
